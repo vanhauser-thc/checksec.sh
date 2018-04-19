@@ -37,6 +37,13 @@
 #
 # --- Modified Version ---
 # Name    : checksec.sh
+# Version : 1.8.0
+# Author  : Marc Heuse
+# Date    : April 2018
+# Download: https://github.com/vanhauser-thc/checksec.sh
+#
+# --- Modified Version ---
+# Name    : checksec.sh
 # Version : 1.7.0
 # Author  : Brian Davis
 # Date    : Feburary 2014
@@ -66,9 +73,9 @@ have_readelf=1
 verbose=false
 format="cli"
 SCRIPT_NAME="checksec"
-SCRIPT_URL="https://github.com/slimm609/checksec.sh/raw/master/${SCRIPT_NAME}"
-SIG_URL="https://github.com/slimm609/checksec.sh/raw/master/$(basename ${SCRIPT_NAME} .sh).sig"
-SCRIPT_VERSION=2018012401
+SCRIPT_URL="https://github.com/vanhauser-thc/checksec.sh/raw/master/${SCRIPT_NAME}"
+#SIG_URL="https://github.com/slimm609/checksec.sh/raw/master/$(basename ${SCRIPT_NAME} .sh).sig"
+SCRIPT_VERSION=2018041901
 SCRIPT_MAJOR=1
 SCRIPT_MINOR=8
 SCRIPT_REVISION=0
@@ -85,12 +92,14 @@ elif [[ "$sysarch" == "i?86" ]]; then
     arch="32"
 elif [[ "$sysarch" =~ "arm" ]]; then
     arch="arm"
+else
+    arch="64" # likely aarch64 then
 fi
 
 #openssl public key for verification of updates
-read -r PUBKEY <<EOF
-LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQklqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FROEFNSUlCQ2dLQ0FRRUF3Z25kcnk2WGJpNE8wR2w1T2UzSQp1eWRyMlZqR1hteDJFM0thd0wrK1F3a2FVT0RHOEVuT24weFZ1S1ZkZEphZjY3Rmxzd3pPYjh1RFRDTjdsWURnCnFKQXdmNllTOUFsdU5RRmlFQWhFRlgxL0dsMi9TSnFHYXhFVU9HTlV3NTI5a3BVR0MwNmN6SHhENEcvdWNBQlkKT05iWm9Vc1pIYmRnZUNueWs1dzZ0SWs3MEplNmZ2em5Da2JxbUZhS0UyQnhWTERLU0liSDBTak5XT3RSMmF6ZAp1V3p2RU1kVXFlZlZjYXErUDFjV0dLNy94VllSNkV3ME1aQTdWU0xkREhlRUVySW9Kc3UvM2VaeUR5ZDlaUlJvCmdpajM2R1N2SFREclU1ZVdXRlN0Q01UM29DRDhMSjVpbXBReWpWd3Z5M3Z4ZVNVYzVkdytZUDU0OU9jNHF2bzYKOXdJREFRQUIKLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg==
-EOF
+#read -r PUBKEY <<EOF
+#LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQklqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FROEFNSUlCQ2dLQ0FRRUF3Z25kcnk2WGJpNE8wR2w1T2UzSQp1eWRyMlZqR1hteDJFM0thd0wrK1F3a2FVT0RHOEVuT24weFZ1S1ZkZEphZjY3Rmxzd3pPYjh1RFRDTjdsWURnCnFKQXdmNllTOUFsdU5RRmlFQWhFRlgxL0dsMi9TSnFHYXhFVU9HTlV3NTI5a3BVR0MwNmN6SHhENEcvdWNBQlkKT05iWm9Vc1pIYmRnZUNueWs1dzZ0SWs3MEplNmZ2em5Da2JxbUZhS0UyQnhWTERLU0liSDBTak5XT3RSMmF6ZAp1V3p2RU1kVXFlZlZjYXErUDFjV0dLNy94VllSNkV3ME1aQTdWU0xkREhlRUVySW9Kc3UvM2VaeUR5ZDlaUlJvCmdpajM2R1N2SFREclU1ZVdXRlN0Q01UM29DRDhMSjVpbXBReWpWd3Z5M3Z4ZVNVYzVkdytZUDU0OU9jNHF2bzYKOXdJREFRQUIKLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg==
+#EOF
 
 # FORTIFY_SOURCE vars
 FS_end=_chk
@@ -123,8 +132,8 @@ fetch() {
 
 # version information
 version() {
-  echo "checksec v${SCRIPT_MAJOR}.${SCRIPT_MINOR}.${SCRIPT_REVISION}, Brian Davis, github.com/slimm609/checksec.sh, Dec 2015"
-  echo "Based off checksec v1.5, Tobias Klein, www.trapkit.de, November 2011"
+  echo "checksec v${SCRIPT_MAJOR}.${SCRIPT_MINOR}.${SCRIPT_REVISION}, Tobias Klein, Brian Davis, Marc Heuse; github.com/vanhauser-thc/checksec.sh; 2018"
+  #echo "Based off checksec v1.5, Tobias Klein, www.trapkit.de, November 2011"
   echo
 }
 
@@ -132,9 +141,8 @@ version() {
 help() {
   echo "Usage: checksec [--output {cli|csv|xml|json}] [OPTION]"
   echo
-  echo
   echo "Options:"
-  echo
+  echo "  --linux    (force linux if you are on Cygwin)"
   echo "  --file (-f) <executable-file>"
   echo "  --dir (-d) <directory> [-v]"
   echo "  --proc (-p) <process name>"
@@ -149,9 +157,9 @@ help() {
     echo "  --update"
   fi
   echo
-  echo "For more information, see:"
-  echo "  http://github.com/slimm609/checksec.sh"
-  echo
+#  echo "For more information, see:"
+#  echo "  http://github.com/slimm609/checksec.sh"
+#  echo
 }
 
 #run help if nothing is passed
@@ -329,14 +337,16 @@ filecheck() {
   elif [[ -e /lib/x86_64-linux-gnu/libc.so.6 ]] ; then
     FS_libc=/lib/x86_64-linux-gnu/libc.so.6
   else
-    printf "\033[31mError: libc not found.\033[m\n\n"
-    exit 1
+    #printf "\033[31mError: libc not found.\033[m\n\n "
+    FS_libc=
+    #exit 1
   fi
 
 
   FS_cnt_checked=0
   FS_cnt_total=0
-  FS_chk_func_libc=( $($readelf -s $FS_libc | grep _chk@@ | awk '{ print $8 }' | cut -c 3- | sed -e 's/_chk@.*//') )
+  FS_chk_func_libc=
+  test -n "$FS_libc" && FS_chk_func_libc=( $($readelf -s $FS_libc | grep _chk@@ | awk '{ print $8 }' | cut -c 3- | sed -e 's/_chk@.*//') )
   FS_functions=( $($readelf -s "$1" | awk '{ print $8 }' | sed 's/_*//' | sed -e 's/@.*//') )
   FS_count
 
@@ -1054,7 +1064,7 @@ echo "***** Checksec debug *****"
 failed=false
 id
 uname -a
-for command in cat awk sysctl uname mktemp openssl grep stat file find head ps readlink basename id which wget curl readelf eu-readelf; do
+for command in cat awk sysctl uname mktemp openssl grep stat file find head ps readlink basename id which wget curl readelf; do
   path="$(which $command)"
   if [[ -e "$path" ]]; then
     ls -l "$path"
@@ -1076,35 +1086,42 @@ if [[ $failed ]]; then
 fi
 }
 
+system=`uname -o`
+
 commandsmissing=false
 for command in cat awk sysctl uname mktemp openssl grep stat file find head ps readlink basename id which; do
     if ! (command_exists $command); then
-       echo -e "\e[31mWARNING: '$command' not found! It's required for most checks.\e[0m"
+       test "$system" = "Cygwin" || echo -e "\e[31mWARNING: '$command' not found! It's required for most checks.\e[0m"
        commandsmissing=true
     fi
 done
 
-if [[ $commandsmissing == true ]]; then
-    echo -e "\n\e[31mWARNING: Not all necessary commands found. Some tests might not work!\e[0m\n"
-    sleep 2
-fi
+#if [[ $commandsmissing == true ]]; then
+    #echo -e "\n\e[31mWARNING: Not all necessary commands found. Some tests might not work!\e[0m\n"
+    #sleep 2
+#fi
 
-if (command_exists readelf); then
+test "$system" = "Cygwin" && readelf=readelf
+test "$system" = "Cygwin" || {
+  if (command_exists readelf); then
      readelf=readelf
-elif (command_exists eu-readelf); then
+  elif (command_exists eu-readelf); then
      readelf=eu-readelf
-elif (command_exists greadelf); then
+  elif (command_exists greadelf); then
      readelf=greadelf
-else
-    echo -e "\n\e[31mERROR: readelf is a required tool for almost all tests. Aborting...\e[0m\n"
-    exit
-fi
+  else
+    echo -e "\n\e[31mERROR: readelf is a required tool for almost all tests.\e[0m\n"
+  fi
+}
 #while [[ "$@" != "" ]]
 while test -n "$1"
 do
   # parse command-line arguments
   case "$1" in
-
+  --linux)
+    system=Linux
+    shift 1
+    ;;
   --version)
     version
     exit 0
@@ -1127,20 +1144,20 @@ do
     fi
   umask 027
   TMP_FILE=$(mktemp /tmp/checksec.XXXXXXXXXX)
-  SIG_FILE=$(mktemp /tmp/checksec_sig.XXXXXXXX)
-  PUBKEY_FILE=$(mktemp /tmp/checksec_pubkey.XXXXXXXXXX)
+  #SIG_FILE=$(mktemp /tmp/checksec_sig.XXXXXXXX)
+  #PUBKEY_FILE=$(mktemp /tmp/checksec_pubkey.XXXXXXXXXX)
     fetch "${SCRIPT_URL}" "${TMP_FILE}"
-    fetch "${SIG_URL}" "${SIG_FILE}"
-  echo "${PUBKEY}" | base64 -d > "${PUBKEY_FILE}"
-  if ! openssl dgst -sha256 -verify "${PUBKEY_FILE}" -signature "${SIG_FILE}" "${TMP_FILE}" >/dev/null 2>&1; then
-    echo "file signature does not match. Update may be tampered"
-    rm -f "${TMP_FILE}" "${SIG_FILE}" "${PUBKEY_FILE}" >/dev/null 2>&1
-    exit 1
-  fi
+  #  fetch "${SIG_URL}" "${SIG_FILE}"
+  #echo "${PUBKEY}" | base64 -d > "${PUBKEY_FILE}"
+  #if ! openssl dgst -sha256 -verify "${PUBKEY_FILE}" -signature "${SIG_FILE}" "${TMP_FILE}" >/dev/null 2>&1; then
+  #  echo "file signature does not match. Update may be tampered"
+  #  rm -f "${TMP_FILE}" "${SIG_FILE}" "${PUBKEY_FILE}" >/dev/null 2>&1
+  #  exit 1
+  #fi
   UPDATE_VERSION=$(grep "^SCRIPT_VERSION" "${TMP_FILE}" | awk -F"=" '{ print $2 }')
   if [[ "${SCRIPT_VERSION}" != "${UPDATE_VERSION}" ]]; then
     PERMS=$(stat -c "%a" "$0")
-    rm -f "${SIG_FILE}" "${PUBKEY_FILE}" >/dev/null 2>&1
+    #rm -f "${SIG_FILE}" "${PUBKEY_FILE}" >/dev/null 2>&1
     mv "${TMP_FILE}" "$0" >/dev/null 2>&1
     if [[ $? == 0 ]]; then
       echo "checksec.sh updated - Rev. $UPDATE_VERSION"
@@ -1173,6 +1190,7 @@ do
     ;;
 
   --dir|-d)
+    test "$system" = "Cygwin" && { echo Option --dir is not supported on Cygwin ; exit 1 ; }
     if [[ "$3" = "-v" ]] ; then
       verbose=true
     fi
@@ -1238,6 +1256,14 @@ do
     ;;
 
   --file|-f)
+    test "$system" = "Cygwin" && {
+      echo File $2
+      echo ========================
+      ASLRProcessScanner64 -f "$2" | grep Status
+      DEPProcessScanner64 -f "$2" | grep Status  
+      echo
+      exit 0
+    }
     if [[ $have_readelf -eq 0 ]] ; then
       exit 1
     fi
@@ -1263,8 +1289,9 @@ do
       printf "\033[m\n"
       exit 1
     fi
-    echo_message "RELRO           STACK CANARY      NX            PIE             RPATH      RUNPATH\tFORTIFY\tFortified Fortifiable  FILE\n" '' '' '{'
+    echo_message "RELRO           STACK CANARY      NX            PIE             RPATH      RUNPATH\tFORTIFY\tFortified\tFortifiable\tFILE\n" '' '' '{'
     filecheck "$2"
+    echo -ne "\t"
     if [[ "$(find "$2" \( -perm -004000 -o -perm -002000 \) -type f -print)" ]] ; then
       echo_message "\033[37;41m$2$N\033[m" ",$2$N" " filename='$2$N'/>\n" ",\"filename\":\"$2$N\" } }"
     else
@@ -1275,6 +1302,25 @@ do
     ;;
 
   --proc-all|-pa)
+    test "$system" = "Cygwin" && {
+      echo ASLR ENABLED
+      echo ========================
+      ASLRProcessScanner64
+      echo
+      echo ASLR DISABLED
+      echo ========================
+      ASLRProcessScanner64 -d
+      echo
+      echo DEP ENABLED
+      echo ========================
+      DEPProcessScanner64
+      echo
+      echo DEP DISABLED
+      echo ========================
+      DEPProcessScanner64 -d
+      echo
+      exit 0
+    }
     if [[ $have_readelf -eq 0 ]] ; then
       exit 1
     fi
@@ -1324,6 +1370,14 @@ do
     ;;
 
   --proc|-p)
+      test "$system" = "Cygwin" && {
+      echo PID $2
+      echo ========================
+      ASLRProcessScanner64 -p "$2" | grep Status
+      DEPProcessScanner64 -p "$2" | grep Status
+      echo
+      exit 0
+    }
     if [[ $have_readelf -eq 0 ]] ; then
       exit 1
     fi
@@ -1371,6 +1425,7 @@ do
     ;;
 
   --proc-libs|-pl)
+    test "$system" = "Cygwin" && { echo Option --proc-libs is not supported on Cygwin ; exit 1 ; }
     if [[ $have_readelf -eq 0 ]] ; then
       exit 1
     fi
@@ -1441,6 +1496,7 @@ do
     ;;
 
   --fortify-file|-ff)
+    test "$system" = "Cygwin" && { echo Option --fortify-file is not supported on Cygwin ; exit 1 ; }
     if [[ $have_readelf -eq 0 ]] ; then
       exit 1
     fi
@@ -1491,6 +1547,7 @@ do
     ;;
 
   --fortify-proc|-fp)
+    test "$system" = "Cygwin" && { echo Option --fortify-proc is not supported on Cygwin ; exit 1 ; }
     if [[ $have_readelf -eq 0 ]] ; then
       exit 1
     fi
