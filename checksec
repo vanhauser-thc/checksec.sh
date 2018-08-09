@@ -1282,7 +1282,8 @@ do
       exit 1
     fi
     # ELF executable?
-    out=$(file "$(readlink -f "$2")")
+    out=$(file "$(readlink -f "$2")" 2> /dev/null )
+    test -z "$out" -a -x "$(readlink -f "$2")" && out=ELF  # workaround if no file command
     if [[ ! $out =~ ELF ]] ; then
       printf "\033[31mError: Not an ELF file: "
       file "$2"
