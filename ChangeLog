@@ -1,3 +1,9 @@
+August 2018  Marc Heuse <mh@mh-sec.de>
+	* added --linux switch to run script on linux binaries under Cygwin/Windows
+	* made "file" tool optional
+	* added fixes and improvements from other repositories
+	* made script work with busybox
+
 Rev-2018012401  Brian Davis     <slimm609@gmail.com>
         * checksec.sh: Updated to 1.8.0
         * checksec.sh: resolved issue with eu-readelf debug

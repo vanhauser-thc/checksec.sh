@@ -287,10 +287,19 @@ filecheck() {
 
   # check for NX support
   $debug && echo -e "\n***function filecheck->nx"
-  if $readelf -W -l "$1" 2>/dev/null | grep 'GNU_STACK' | grep -q 'RWE'; then
-    echo_message '\033[31mNX disabled\033[m   ' 'NX disabled,' ' nx="no"' '"nx":"no",'
+  #if $readelf -W -l "$1" 2>/dev/null | grep 'GNU_STACK' | grep -q 'RWE'; then
+  #  echo_message '\033[31mNX disabled\033[m   ' 'NX disabled,' ' nx="no"' '"nx":"no",'
+  #else
+  #  echo_message '\033[32mNX enabled \033[m   ' 'NX enabled,' ' nx="yes"' '"nx":"yes",'
+  #fi
+  if $readelf -W -l "$1" 2>/dev/null | grep -q 'GNU_STACK'; then
+    if $readelf -W -l "$1" 2>/dev/null | grep 'GNU_STACK' | grep -q 'RWE'; then
+      echo_message '\033[31mNX disabled\033[m   ' 'NX disabled,' ' nx="no"' '"nx":"no",'
+    else
+      echo_message '\033[32mNX enabled \033[m   ' 'NX enabled,' ' nx="yes"' '"nx":"yes",'
+    fi
   else
-    echo_message '\033[32mNX enabled \033[m   ' 'NX enabled,' ' nx="yes"' '"nx":"yes",'
+    echo_message '\033[31mNX disabled\033[m   ' 'NX disabled,' ' nx="no"' '"nx":"no",'
   fi
 
   # check for PIE support
@@ -591,7 +600,7 @@ kernelcheck() {
 
   echo_message "  Ipv4 reverse path filtering: 		  " "" "" ""
   ipv4_rpath=$(sysctl -b -e net.ipv4.conf.all.rp_filter)
-  if [[ "x$ipv4_rpath" == "x1" ]]; then
+  if [[ "x$ipv4_rpath" == "x1" ]] || [[ -n $(iptables -t raw -L RPFILTER | grep -e '^DROP') ]]; then
     echo_message "\033[32mEnabled\033[m\n" "Enabled," " ipv4_rpath='yes'" '"ipv4_rpath":"yes",'
   else
     echo_message "\033[31mDisabled\033[m\n" "Disabled," " ipv4_rpath='no'" '"ipv4_rpath":"no",'
@@ -599,7 +608,7 @@ kernelcheck() {
 
   echo_message "  Ipv6 reverse path filtering: 		  " "" "" ""
   ipv6_rpath=$(sysctl -b -e net.ipv6.conf.all.rp_filter)
-  if [[ "x$ipv6_rpath" == "x1" ]]; then
+  if [[ "x$ipv6_rpath" == "x1" ]] || [[ -n $(ip6tables -t raw -L RPFILTER | grep -e '^DROP') ]]; then
     echo_message "\033[32mEnabled\033[m\n" "Enabled," " ipv6_rpath='yes'" '"ipv6_rpath":"yes",'
   else
     echo_message "\033[31mDisabled\033[m\n" "Disabled," " ipv6_rpath='no'" '"ipv6_rpath":"no",'
@@ -614,7 +623,7 @@ kernelcheck() {
   fi
 
   echo_message "  GCC stack protector support:            " "" "" ""
-  if $kconfig | grep -qi 'CONFIG_CC_STACKPROTECTOR=y'; then
+  if $kconfig | egrep -qi 'CONFIG_STACKPROTECTOR=y|CONFIG_CC_STACKPROTECTOR=y'; then
     echo_message "\033[32mEnabled\033[m\n" "Enabled," " gcc_stack_protector='yes'" '"gcc_stack_protector":"yes",'
   else
     echo_message "\033[31mDisabled\033[m\n" "Disabled," " gcc_stack_protector='no'" '"gcc_stack_protector":"no",'
