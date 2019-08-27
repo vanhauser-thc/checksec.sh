@@ -37,6 +37,14 @@
 #
 # --- Modified Version ---
 # Name    : checksec.sh
+# Version : 20
+# Author  : Marc Heuse
+# Date    : August 2019
+# Download: https://github.com/vanhauser-thc/checksec.sh
+# Changes : import from master
+#
+# --- Modified Version ---
+# Name    : checksec.sh
 # Version : 1.12.1
 # Author  : Marc Heuse
 # Date    : June 2019
@@ -77,6 +85,7 @@
 export LC_ALL="C"
 
 # global vars
+extended_checks=true
 debug=false
 have_readelf=1
 verbose=false
@@ -85,8 +94,8 @@ SCRIPT_NAME="checksec"
 SCRIPT_URL="https://github.com/vanhauser-thc/checksec.sh/raw/master/${SCRIPT_NAME}"
 #SIG_URL="https://github.com/slimm609/checksec.sh/raw/master/$(basename ${SCRIPT_NAME} .sh).sig"
 SCRIPT_VERSION=2018041901
-SCRIPT_MAJOR=1
-SCRIPT_MINOR=8
+SCRIPT_MAJOR=2
+SCRIPT_MINOR=0
 SCRIPT_REVISION=0
 pkg_release=false
 
@@ -327,6 +336,27 @@ filecheck() {
     echo_message '\033[33mNot an ELF file\033[m   ' 'Not an ELF file,' ' pie="not_elf"' '"pie":"not_elf",'
   fi
 
+  if ${extended_checks}; then
+    # check if compiled with Clang CFI
+    ${debug} && echo -e "\n***function filecheck->clangcfi"
+    #if $readelf -s "$1" 2>/dev/null | grep -Eq '\.cfi'; then
+    read -a cfifunc <<< $($readelf -s "${1}" 2>/dev/null | grep .cfi | awk '{ print $8 }' )
+    func=${cfifunc/.cfi/}
+    if [ ! -z "$cfifunc" ] && $readelf -s "$1" 2>/dev/null | grep -q "$func$"; then
+      echo_message '\033[32mClang CFI found   \033[m   ' 'with CFI,' ' clangcfi="yes"' '"clangcfi":"yes",'
+    else
+      echo_message '\033[31mNo Clang CFI found\033[m   ' 'without CFI,' ' clangcfi="no"' '"clangcfi":"no",'
+    fi
+
+    # check if compiled with Clang SafeStack
+    ${debug} && echo -e "\n***function filecheck->safestack"
+    if $readelf -s "$1" 2>/dev/null | grep -Eq '__safestack_init'; then
+      echo_message '\033[32mSafeStack found   \033[m   ' 'with SafeStack,' ' safestack="yes"' '"safestack":"yes",'
+    else
+      echo_message '\033[31mNo SafeStack found\033[m   ' 'without SafeStack,' ' safestack="no"' '"safestack":"no",'
+    fi
+  fi
+
   # check for rpath / run path
   $debug && echo -e "\n***function filecheck->rpath"
   if $readelf -d "$1" 2>/dev/null | grep -q 'rpath'; then
@@ -369,6 +399,8 @@ filecheck() {
     FS_libc=/lib/arm-linux-gnueabihf/libc.so.6
   elif [[ -e /lib/aarch64-linux-gnu/libc.so.6 ]] ; then
     FS_libc=/lib/aarch64-linux-gnu/libc.so.6
+  elif [[ -e /usr/x86_64-gentoo-linux-musl/bin/ld ]] ; then
+    FS_libc=/usr/x86_64-gentoo-linux-musl/bin/ld
   else
     #printf "\033[31mError: libc not found.\033[m\n\n "
     FS_libc=
@@ -427,9 +459,30 @@ proccheck() {
     fi
   else
     if [[ "$1" == "1" ]] ; then
-      echo -n -e '\033[33mPermission denied    \033[m  '
+      echo -n -e '\033[33mPermission denied    \033[m  ' 'Permission denied,' ' canary="Permission denied"' '"canary":"Permission denied",'
     else
-      echo -n -e '\033[33mNo symbol table found \033[m  '
+      echo -n -e '\033[33mNo symbol table found \033[m  ' 'No symbol table found,' ' canary="No symbol table found"' '"canary":"No symbol table found",'
+    fi
+  fi
+
+  if ${extended_checks}; then
+    # check if compiled with Clang CFI
+    $debug && echo -e "\n***function proccheck->clangcfi"
+    #if $readelf -s "$1" 2>/dev/null | grep -Eq '\.cfi'; then
+    read -a cfifunc <<< $($readelf -s "$1/exe" 2>/dev/null | grep .cfi | awk '{ print $8 }' )
+    func=${cfifunc/.cfi/}
+    if [ ! -z "$cfifunc" ] && $readelf -s "$1/exe" 2>/dev/null | grep -q "$func$"; then
+      echo_message '\033[32mClang CFI found   \033[m   ' 'with CFI,' ' clangcfi="yes"' '"clangcfi":"yes",'
+    else
+      echo_message '\033[31mNo Clang CFI found\033[m   ' 'without CFI,' ' clangcfi="no"' '"clangcfi":"no",'
+    fi
+
+    # check if compiled with Clang SafeStack
+    $debug && echo -e "\n***function proccheck->safestack"
+    if $readelf -s "$1/exe" 2>/dev/null | grep -Eq '__safestack_init'; then
+      echo_message '\033[32mSafeStack found   \033[m   ' 'with SafeStack,' ' safestack="yes"' '"safestack":"yes",'
+    else
+      echo_message '\033[31mNo SafeStack found\033[m   ' 'without SafeStack,' ' safestack="no"' '"safestack":"no",'
     fi
   fi
 
@@ -584,7 +637,7 @@ kernelcheck() {
   echo_message "  inspect kernel mechanisms that may aid in the prevention of exploitation of\n" '' '' ''
   echo_message "  userspace processes, this option lists the status of kernel configuration\n" '' '' ''
   echo_message "  options that harden the kernel itself against attack.\n\n" '' '' ''
-  echo_message "  Kernel config:\n" '' '' '{ "kernel": '
+  echo_message "  Kernel config:                          " '' '' '{ "kernel": '
 
   if [[ ! "$1" == "" ]] ; then
     kconfig="cat $1"
@@ -608,7 +661,7 @@ kernelcheck() {
   elif [[ -f /boot/config-"$(uname -r)" ]] ; then
     kconfig="cat /boot/config-$(uname -r)"
     kern=$(uname -r)
-    echo_message "\033[33m/boot/config-$kern\033[m\n\n" "/boot/config-$kern," "<kernel config='/boot/config-$kern'" "{ \"KernelConfig\":\"/boot/config-$kern\","
+    echo_message "\033[33m/boot/config-$kern\033[m\n" "/boot/config-$kern," "<kernel config='/boot/config-$kern'" "{ \"KernelConfig\":\"/boot/config-$kern\","
     echo_message "  Warning: The config on disk may not represent running kernel config!\n\n" "" "" ""
   elif [[ -f "${KBUILD_OUTPUT:-/usr/src/linux}"/.config ]] ; then
     kconfig="cat ${KBUILD_OUTPUT:-/usr/src/linux}/.config"
@@ -649,7 +702,7 @@ kernelcheck() {
 
   echo_message "  Ipv4 reverse path filtering: 		  " "" "" ""
   ipv4_rpath=$(sysctl -b -e net.ipv4.conf.all.rp_filter)
-  if [[ "x$ipv4_rpath" == "x1" ]] || [[ -n $(iptables -t raw -L RPFILTER | grep -e '^DROP') ]]; then
+  if [[ "x$ipv4_rpath" == "x1" ]] || [[ -n $(iptables -t raw -L RPFILTER 2>/dev/null| grep -e '^DROP') ]]; then
     echo_message "\033[32mEnabled\033[m\n" "Enabled," " ipv4_rpath='yes'" '"ipv4_rpath":"yes",'
   else
     echo_message "\033[31mDisabled\033[m\n" "Disabled," " ipv4_rpath='no'" '"ipv4_rpath":"no",'
@@ -657,7 +710,7 @@ kernelcheck() {
 
   echo_message "  Ipv6 reverse path filtering: 		  " "" "" ""
   ipv6_rpath=$(sysctl -b -e net.ipv6.conf.all.rp_filter)
-  if [[ "x$ipv6_rpath" == "x1" ]] || [[ -n $(ip6tables -t raw -L RPFILTER | grep -e '^DROP') ]]; then
+  if [[ "x$ipv6_rpath" == "x1" ]] || [[ -n $(ip6tables -t raw -L RPFILTER 2>/dev/null| grep -e '^DROP') ]]; then
     echo_message "\033[32mEnabled\033[m\n" "Enabled," " ipv6_rpath='yes'" '"ipv6_rpath":"yes",'
   else
     echo_message "\033[31mDisabled\033[m\n" "Disabled," " ipv6_rpath='no'" '"ipv6_rpath":"no",'
@@ -671,32 +724,141 @@ kernelcheck() {
     echo_message "\033[32mEnabled\033[m\n" "Enabled," " kernel_heap_randomization='yes'" '"kernel_heap_randomization":"yes",'
   fi
 
-  echo_message "  GCC stack protector support:            " "" "" ""
-  if $kconfig | egrep -qi 'CONFIG_STACKPROTECTOR=y|CONFIG_CC_STACKPROTECTOR=y'; then
-    echo_message "\033[32mEnabled\033[m\n" "Enabled," " gcc_stack_protector='yes'" '"gcc_stack_protector":"yes",'
-  else
-    echo_message "\033[31mDisabled\033[m\n" "Disabled," " gcc_stack_protector='no'" '"gcc_stack_protector":"no",'
-  fi
+#  echo_message "  GCC stack protector support:            " "" "" ""
+#  if $kconfig | egrep -qi 'CONFIG_STACKPROTECTOR=y|CONFIG_CC_STACKPROTECTOR=y'; then
+#    echo_message "\033[32mEnabled\033[m\n" "Enabled," " gcc_stack_protector='yes'" '"gcc_stack_protector":"yes",'
+#  else
+#    echo_message "\033[31mDisabled\033[m\n" "Disabled," " gcc_stack_protector='no'" '"gcc_stack_protector":"no",'
+#  fi
+  if ${kconfig} | grep -qi 'CONFIG_CC_STACKPROTECTOR' || ${kconfig} | grep -qa 'CONFIG_STACKPROTECTOR'; then
+    echo_message "  GCC stack protector support:            " "" "" ""
+    if ${kconfig} | grep -qi 'CONFIG_CC_STACKPROTECTOR=y' || ${kconfig} | grep -qi 'CONFIG_STACKPROTECTOR=y' ; then
+      echo_message "\033[32mEnabled\033[m\n" "Enabled," " gcc_stack_protector='yes'" '"gcc_stack_protector":"yes",'
 
-  if ! $kconfig | grep -qi 'CONFIG_PAX'; then
-    echo_message "  Enforce read-only kernel data:          " "" "" ""
-    if $kconfig | grep -qi 'CONFIG_DEBUG_RODATA=y\|CONFIG_STRICT_KERNEL_RWX=y'; then
-      echo_message "\033[32mEnabled\033[m\n" "Enabled," " ro_kernel_data='yes'" '"ro_kernel_data":"yes",'
-      echo_message "  Enforce read-only module data:          " "" "" ""
-      if $kconfig | grep -qi 'CONFIG_STRICT_MODULE_RWX=y'; then
-        echo_message "\033[32mEnabled\033[m\n" "Enabled," " ro_module_data='yes'" '"ro_module_data":"yes",'
-      else
-        echo_message "\033[31mDisabled\033[m\n" "Disabled," " ro_module_data='no'" '"ro_module_data":"no",'
+      if ${kconfig} | grep -qi 'CONFIG_CC_STACKPROTECTOR_STRONG' || ${kconfig} | grep -qi 'CONFIG_STACKPROTECTOR_STRONG'; then
+        echo_message "  GCC stack protector strong:             " "" "" ""
+        if ${kconfig} | grep -qi 'CONFIG_CC_STACKPROTECTOR_STRONG=y' || ${kconfig} | grep -qi 'CONFIG_STACKPROTECTOR_STRONG=y'; then
+          echo_message "\033[32mEnabled\033[m\n" "Enabled," " gcc_stack_protector_strong='yes'" '"gcc_stack_protector_strong":"yes",'
+        else
+          echo_message "\033[31mDisabled\033[m\n" "Disabled," " gcc_stack_protector_strong='no'" '"gcc_stack_protector_strong":"no",'
+        fi
       fi
     else
-      echo_message "\033[31mDisabled\033[m\n" "Disabled," " ro_kernel_data='no'" '"ro_kernel_data":"no",'
+      echo_message "\033[31mDisabled\033[m\n" "Disabled," " gcc_stack_protector='no'" '"gcc_stack_protector":"no",'
     fi
+  fi
+
+  if ${kconfig} | grep -qi 'CONFIG_GCC_PLUGIN_STRUCTLEAK'; then
+    echo_message "  GCC structleak plugin:                  " "" "" ""
+    if ${kconfig} | grep -qi 'CONFIG_GCC_PLUGIN_STRUCTLEAK=y'; then
+      echo_message "\033[32mEnabled\033[m\n" "Enabled," " gcc_structleak='yes'" '"gcc_structleak":"yes",'
+      echo_message "  GCC structleak by ref plugin:           " "" "" ""
+      if ${kconfig} | grep -qi 'CONFIG_GCC_PLUGIN_STRUCTLEAK_BYREF_ALL=y'; then
+        echo_message "\033[32mEnabled\033[m\n" "Enabled," " gcc_structleak_byref='yes'" '"gcc_structleak_byref":"yes",'
+      else
+        echo_message "\033[32mEnabled\033[m\n" "Enabled," " gcc_structleak_byref='no'" '"gcc_structleak_byref":"no",'
+      fi
+    else
+      echo_message "\033[31mDisabled\033[m\n" "Disabled," " gcc_structleak='no'" '"gcc_structleak":"no",'
+    fi
+  fi
+
+  if ${kconfig} | grep -qi 'CONFIG_SLAB_FREELIST_RANDOM'; then
+    echo_message "  SLAB freelist randomization:            " "" "" ""
+    if ${kconfig} | grep -qi 'CONFIG_SLAB_FREELIST_RANDOM=y'; then
+      echo_message "\033[32mEnabled\033[m\n" "Enabled," " slab_freelist_randomization='yes'" '"slab_freelist_randomization":"yes",'
+    else
+      echo_message "\033[31mDisabled\033[m\n" "Disabled," " slab_freelist_randomization='no'" '"slab_freelist_randomization":"no",'
+    fi
+  fi
+
+  if ${kconfig} | grep -qi 'CPU_SW_DOMAIN_PAN=y'; then
+    echo_message "  Use CPU domains:                        " "" "" ""
+    if ${kconfig} | grep -qi 'CPU_SW_DOMAIN_PAN=y'; then
+      echo_message "\033[32mEnabled\033[m\n" "Enabled," " cpu_sw_domain'yes'" '"cpu_sw_domain":"yes",'
+    else
+      echo_message "\033[31mDisabled\033[m\n" "Disabled," " cpu_sw_domain='no'" '"cpu_sw_domain":"no",'
+    fi
+  fi
+
+  if ${kconfig} | grep -qi 'CONFIG_VMAP_STACK'; then
+    echo_message "  Virtually-mapped kernel stack:          " "" "" ""
+    if ${kconfig} | grep -qi 'CONFIG_VMAP_STACK=y'; then
+      echo_message "\033[32mEnabled\033[m\n" "Enabled," " virtually_mapped_stack='yes'" '"virtually_mapped_stack":"yes",'
+    else
+      echo_message "\033[31mDisabled\033[m\n" "Disabled," " virtually_mapped_stack='no'" '"virtually_mapped_stack":"no",'
+    fi
+  fi
+
+  if ${kconfig} | grep -qi 'CONFIG_DEVMEM'; then
+    if ${kconfig} | grep -qi 'CONFIG_DEVMEM=y'; then
+      echo_message "  Restrict /dev/mem access:               " "" "" ""
+      if ${kconfig} | grep -qi 'CONFIG_STRICT_DEVMEM=y'; then
+        echo_message "\033[32mEnabled\033[m\n" "Enabled," " restrict_dev_mem_access='yes'" '"restrict_dev_mem_access":"yes",'
+      else
+        echo_message "\033[31mDisabled\033[m\n" "Disabled," " restrict_dev_mem_access='no'" '"restrict_dev_mem_access":"no",'
+      fi
+      echo_message "  Restrict I/O access to /dev/mem:        " "" "" ""
+      if ${kconfig} | grep -qi 'CONFIG_IO_STRICT_DEVMEM=y'; then
+        echo_message "\033[32mEnabled\033[m\n" "Enabled," " restrict_io_dev_mem_access='yes'" '"restrict_io_dev_mem_access":"yes",'
+      else
+        echo_message "\033[31mDisabled\033[m\n" "Disabled," " restrict_io_dev_mem_access='no'" '"restrict_io_dev_mem_access":"no",'
+      fi
+    fi
+  fi
+
+  if ! ${kconfig} | grep -qi 'CONFIG_PAX'; then
+    if ${kconfig} | grep -qi 'CONFIG_DEBUG_RODATA' || ${kconfig} | grep -qi '|CONFIG_STRICT_KERNEL_RWX'; then
+      echo_message "  Enforce read-only kernel data:          " "" "" ""
+      if ${kconfig} | grep -qi 'CONFIG_DEBUG_RODATA=y\|CONFIG_STRICT_KERNEL_RWX=y'; then
+        echo_message "\033[32mEnabled\033[m\n" "Enabled," " ro_kernel_data='yes'" '"ro_kernel_data":"yes",'
+        echo_message "  Enforce read-only module data:          " "" "" ""
+        if ${kconfig} | grep -qi 'CONFIG_STRICT_MODULE_RWX=y\|CONFIG_DEBUG_SET_MODULE_RONX'; then
+          echo_message "\033[32mEnabled\033[m\n" "Enabled," " ro_module_data='yes'" '"ro_module_data":"yes",'
+        else
+          echo_message "\033[31mDisabled\033[m\n" "Disabled," " ro_module_data='no'" '"ro_module_data":"no",'
+        fi
+      else
+        echo_message "\033[31mDisabled\033[m\n" "Disabled," " ro_kernel_data='no'" '"ro_kernel_data":"no",'
+      fi
+    fi
+  fi
+
+#  if ! $kconfig | grep -qi 'CONFIG_PAX'; then
+#    echo_message "  Enforce read-only kernel data:          " "" "" ""
+#    if $kconfig | grep -qi 'CONFIG_DEBUG_RODATA=y\|CONFIG_STRICT_KERNEL_RWX=y'; then
+#      echo_message "\033[32mEnabled\033[m\n" "Enabled," " ro_kernel_data='yes'" '"ro_kernel_data":"yes",'
+#      echo_message "  Enforce read-only module data:          " "" "" ""
+#      if $kconfig | grep -qi 'CONFIG_STRICT_MODULE_RWX=y'; then
+#        echo_message "\033[32mEnabled\033[m\n" "Enabled," " ro_module_data='yes'" '"ro_module_data":"yes",'
+#      else
+#        echo_message "\033[31mDisabled\033[m\n" "Disabled," " ro_module_data='no'" '"ro_module_data":"no",'
+#      fi
+#    else
+#      echo_message "\033[31mDisabled\033[m\n" "Disabled," " ro_kernel_data='no'" '"ro_kernel_data":"no",'
+#    fi
+#  fi
+
+  if ${kconfig} | grep -qi 'CONFIG_REFCOUNT_FULL'; then
+    echo_message "  Full reference count validation:        " "" "" ""
+    if ${kconfig} | grep -qi 'CONFIG_REFCOUNT_FULL=y'; then
+      echo_message "\033[32mEnabled\033[m\n" "Enabled," " full_refcount_validation='yes'" '"full_refcount_validation":"yes",'
+    else
+      echo_message "\033[31mDisabled\033[m\n" "Disabled," " full_refcount_validation='no'" '"full_refcount_validation":"no",'
+    fi
+  fi
+
+  echo_message "  Exec Shield:                            " """" ""
+  if grep -qi 'kernel.exec-shield = 1' /etc/sysctl.conf 2>/dev/null ; then
+    echo_message '\033[32mEnabled\033[m\n' '' '' ''
+  else
+    echo_message '\033[31mDisabled\033[m\n' '' '' ''
   fi
 
   echo_message "  Hardened Usercopy:                      " "" "" ""
   if $kconfig | grep -qi 'CONFIG_HARDENED_USERCOPY=y'; then
     echo_message "\033[32mEnabled\033[m\n" "Enabled," " hardened_usercopy='yes'" '"hardened_usercopy":"yes",'
-    echo_message "  Hardened Usercopy Pagespan:           " "" "" ""
+    echo_message "  Hardened Usercopy Pagespan:             " "" "" ""
     if $kconfig | grep -qi 'CONFIG_HARDENED_USERCOPY_PAGESPAN=y'; then
       echo_message "\033[32mEnabled\033[m\n" "Enabled," " hardened_usercopy_pagespan='yes'" '"hardened_usercopy_pagespan":"yes",'
     else
@@ -705,6 +867,7 @@ kernelcheck() {
   else
     echo_message "\033[31mDisabled\033[m\n" "Disabled," " hardened_usercopy='no'" '"hardened_usercopy":"no",'
   fi
+
   echo_message "  Restrict /dev/mem access:               " "" "" ""
   if $kconfig | grep -qi 'CONFIG_STRICT_DEVMEM=y'; then
     echo_message "\033[32mEnabled\033[m\n" "Enabled," " restrict_dev_mem_access='yes'" '"restrict_dev_mem_access":"yes",'
@@ -717,6 +880,16 @@ kernelcheck() {
     echo_message "\033[31mDisabled\033[m\n" "Disabled" " restrict_dev_kmem_access='no'" '"restrict_dev_kmem_access":"no" },'
   else
     echo_message "\033[32mEnabled\033[m\n" "Enabled" " restrict_dev_kmem_access='yes'" '"restrict_dev_kmem_access":"yes" },'
+  fi
+
+  if ${kconfig} | grep -qi 'CONFIG_FORTIFY_SOURCE'; then
+    echo_message "  Harden str/mem functions:               " "" "" ""
+    if ${kconfig} | grep -qi 'CONFIG_FORTIFY_SOURCE=y'; then
+      echo_message "\033[32mEnabled\033[m\n" "Enabled," " fortify_source='yes'" '"fortify_source":"yes",'
+    else
+      echo_message "\033[31m  Disabled\033[m\n" "Disabled" " deny_unknown='no'" ', "deny_unknown":"no"'
+      echo_message "\033[31mDisabled\033[m\n" "Disabled," " fortify_source='no'" '"fortify_source":"no",'
+    fi
   fi
 
 #x86 only
@@ -736,7 +909,7 @@ if [[ "$arch" == "32" ]] || [[ "$arch" == "64" ]]; then
   fi
 
   echo_message "  Address space layout randomization:     " "" "" ""
-  if $kconfig | grep -qi 'CONFIG_RANDOMIZE_BASE=y\|CONFIG_PAX_ASLR=y'; then
+  if $kconfig | grep -Eqi 'CONFIG_RANDOMIZE_BASE=y|CONFIG_PAX_ASLR=y'; then
     echo_message "\033[32mEnabled\033[m\n" "Enabled" " random_address_space_layout='yes'>" '"random_address_space_layout":"yes" },'
    else
     echo_message "\033[31mDisabled\033[m\n" "Disabled," " random_address_space_layout='no'>" '"random_address_space_layout":"no",'
@@ -751,10 +924,97 @@ if [[ "$arch" == "arm" ]]; then
   echo_message "  Restrict kernel memory permissions:     " "" "" ""
   if $kconfig | grep -qi 'CONFIG_ARM_KERNMEM_PERMS=y'; then
     echo_message "\033[32mEnabled\033[m\n" "Enabled" " arm_kernmem_perms='yes'>" '"arm_kernmem_perms":"yes" },'
-   else
+  else
     echo_message "\033[31mDisabled\033[m\n" "Disabled," " arm_kernmem_perms='no'>" '"arm_kernmem_perms":"no",'
-   fi
+  fi
+
+  if ${kconfig} | grep -qi 'CONFIG_DEBUG_ALIGN_RODATA'; then
+    echo_message "  Make rodata strictly non-excutable:     " "" "" ""
+    if ${kconfig} | grep -qi 'CONFIG_DEBUG_ALIGN_RODATA=y'; then
+      echo_message "\033[32mEnabled\033[m\n" "Enabled" " arm_strict_rodata='yes'>" '"arm_strict_rodata":"yes",'
+    else
+      echo_message "\033[31mDisabled\033[m\n" "Disabled," " arm_strict_rodata='no'>" '"arm_strict_rodata":"no",'
+    fi
+  fi
+
+  if ${kconfig} | grep -qi 'CONFIG_DEBUG_ALIGN_RODATA'; then
+    echo_message "  Make rodata strictly non-excutable:     " "" "" ""
+    if ${kconfig} | grep -qi 'CONFIG_DEBUG_ALIGN_RODATA=y'; then
+      echo_message "\033[32mEnabled\033[m\n" "Enabled" " arm_strict_rodata='yes'>" '"arm_strict_rodata":"yes",'
+    else
+      echo_message "\033[31mDisabled\033[m\n" "Disabled," " arm_strict_rodata='no'>" '"arm_strict_rodata":"no",'
+    fi
+  fi
 fi
+
+  #ARM64 only
+  if [[ "${arch}" == "aarch64" ]]; then
+    echo_message "\n" "\n" "\n" ""
+    echo_message "* ARM64 only:            \n" "" "" ""
+
+    if ${kconfig} | grep -qi 'CONFIG_UNMAP_KERNEL_AT_EL0'; then
+      echo_message "  Unmap kernel in userspace (KAISER):     " "" "" ""
+      if ${kconfig} | grep -qi 'CONFIG_UNMAP_KERNEL_AT_EL0=y'; then
+        echo_message "\033[32mEnabled\033[m\n" "Enabled" " unmap_kernel_in_userspace='yes'>" '"unmap_kernel_in_userspace":"yes",'
+      else
+        echo_message "\033[31mDisabled\033[m\n" "Disabled," " unmap_kernel_in_userspace='no'>" '"unmap_kernel_in_userspace":"no",'
+      fi
+    fi
+
+    if ${kconfig} | grep -qi 'CONFIG_HARDEN_BRANCH_PREDICTOR'; then
+      echo_message "  Harden branch predictor:                " "" "" ""
+      if ${kconfig} | grep -qi 'CONFIG_HARDEN_BRANCH_PREDICTOR=y'; then
+        echo_message "\033[32mEnabled\033[m\n" "Enabled" " harden_branch_predictor='yes'>" '"harden_branch_predictor":"yes",'
+      else
+        echo_message "\033[31mDisabled\033[m\n" "Disabled," " harden_branch_predictor='no'>" '"harden_branch_predictor":"no",'
+      fi
+    fi
+
+    if ${kconfig} | grep -qi 'CONFIG_HARDEN_EL2_VECTORS'; then
+      echo_message "  Harden EL2 vector mapping:              " "" "" ""
+      if ${kconfig} | grep -qi 'CONFIG_HARDEN_EL2_VECTORS=y'; then
+        echo_message "\033[32mEnabled\033[m\n" "Enabled" " harden_el2_vector_mapping='yes'>" '"harden_el2_vector_mapping":"yes",'
+      else
+        echo_message "\033[31mDisabled\033[m\n" "Disabled," " harden_el2_vector_mapping='no'>" '"harden_el2_vector_mapping":"no",'
+      fi
+    fi
+
+    if ${kconfig} | grep -qi 'CONFIG_ARM64_SSBD'; then
+      echo_message "  Speculative store bypass disable:       " "" "" ""
+      if ${kconfig} | grep -qi 'CONFIG_ARM64_SSBD=y'; then
+        echo_message "\033[32mEnabled\033[m\n" "Enabled" " speculative_store_bypass_disable='yes'>" '"speculative_store_bypass_disable":"yes",'
+      else
+        echo_message "\033[31mDisabled\033[m\n" "Disabled," " speculative_store_bypass_disable='no'>" '"speculative_store_bypass_disable":"no",'
+      fi
+    fi
+
+    if ${kconfig} | grep -qi 'CONFIG_ARM64_SW_TTBR0_PAN'; then
+      echo_message "  Emulate privileged access never:        " "" "" ""
+      if ${kconfig} | grep -qi 'CONFIG_ARM64_SW_TTBR0_PAN=y'; then
+        echo_message "\033[32mEnabled\033[m\n" "Enabled" " emulate_privileged_access_never='yes'>" '"emulate_privileged_access_never":"yes",'
+      else
+        echo_message "\033[31mDisabled\033[m\n" "Disabled," " emulate_privileged_access_never='no'>" '"emulate_privileged_access_never":"no",'
+      fi
+    fi
+
+    if ${kconfig} | grep -qi 'CONFIG_RANDOMIZE_BASE'; then
+      echo_message "  Randomize address of kernel image:      " "" "" ""
+      if ${kconfig} | grep -qi 'CONFIG_RANDOMIZE_BASE=y'; then
+        echo_message "\033[32mEnabled\033[m\n" "Enabled" " randomize_kernel_address='yes'>" '"randomize_kernel_address":"yes",'
+      else
+        echo_message "\033[31mDisabled\033[m\n" "Disabled," " randomize_kernel_address='no'>" '"randomize_kernel_address":"no",'
+      fi
+    fi
+
+    if ${kconfig} | grep -qi 'CONFIG_RANDOMIZE_MODULE_REGION_FULL'; then
+      echo_message "  Randomize module region over 4GB:       " "" "" ""
+      if ${kconfig} | grep -qi 'CONFIG_RANDOMIZE_MODULE_REGION_FULL=y'; then
+        echo_message "\033[32mEnabled\033[m\n" "Enabled" " randomize_module_region_full='yes'>" '"randomize_module_region_full":"yes",'
+      else
+        echo_message "\033[31mDisabled\033[m\n" "Disabled," " randomize_module_region_full='no'>" '"randomize_module_region_full":"no",'
+      fi
+    fi
+  fi
 
   echo_message "\n" "\n" "\n" ""
   echo_message "* SELinux:                                " "" "" ""
@@ -763,8 +1023,8 @@ fi
   sestatus=$?
   if [[ $sestatus == 0 ]]; then
       echo_message "\033[31mDisabled\033[m\n" "Disabled,," "    <selinux enabled='no'" '"selinux":{ "enabled":"no"'
-      echo_message "\n  SELinux infomation available here: \n" "" "" ""
-      echo_message "    http://selinuxproject.org/\n" "" "" ""
+      #echo_message "\n  SELinux infomation available here: \n" "" "" ""
+      #echo_message "    http://selinuxproject.org/\n" "" "" ""
   elif [[ $sestatus == 1 ]]; then
       echo_message "\033[33mPermissive\033[m\n" "Permissive," "    <selinux enabled='yes' mode='permissive'" '"selinux":{ "enabled":"yes", "mode":"permissive"'
   elif [[ $sestatus == 2 ]]; then
@@ -791,6 +1051,16 @@ fi
       echo_message "\033[31m  Disabled\033[m\n" "Disabled" " deny_unknown='no'" ', "deny_unknown":"no"'
     fi
   fi
+
+#  if ${kconfig} | grep -qi 'CONFIG_DEVKMEM'; then
+#    echo_message "  Restrict /dev/kmem access:              " "" "" ""
+#    if ${kconfig} | grep -qi 'CONFIG_DEVKMEM=y'; then
+#      echo_message "\033[31mDisabled\033[m\n" "Disabled" " restrict_dev_kmem_access='no'" '"restrict_dev_kmem_access":"no",'
+#    else
+#      echo_message "\033[33mCustom GRKERNSEC\033[m\n\n" "Custom GRKERNSEC," "    <grsecurity config='custom'" '"grsecurity": { "grsecurity_config":"custom",'
+#      echo_message "\033[32mEnabled\033[m\n" "Enabled" " restrict_dev_kmem_access='yes'" '"restrict_dev_kmem_access":"yes",'
+#    fi
+#  fi
 
   echo_message "\n" "\n" " />\n" " },"
   echo_message "* grsecurity / PaX:                       " "" "" ""
@@ -1020,8 +1290,8 @@ fi
     fi
   else
     echo_message "\033[31mNo GRKERNSEC\033[m\n\n" "No GRKERNSEC,,,,,,,," "    <grsecurity config='no' />\n</kernel>\n" '"grsecurity": { "grsecurity_config":"no" } }'
-    echo_message "  The grsecurity / PaX patchset is available here:\n" "" "" ""
-    echo_message "    http://grsecurity.net/\n" "" "" ""
+    #echo_message "  The grsecurity / PaX patchset is available here:\n" "" "" ""
+    #echo_message "    http://grsecurity.net/\n" "" "" ""
   fi
 }
 
@@ -1134,8 +1404,9 @@ for command in cat awk sysctl uname mktemp openssl grep stat file find head ps r
       file "$path"
     fi
   else
-     echo "*** can not find command $command"
-     failed=true
+    # Fall back to uname, e.g. "Linux <version>", also works for BSD, etc.
+    OS=$(uname -s)
+    VER=$(uname -r)
   fi
 done
 
@@ -1266,7 +1537,11 @@ do
       exit 1
     fi
     cd "$tempdir" || exit
-    echo_message "RELRO           STACK CANARY      NX            PIE             RPATH      RUNPATH    Symbols      \tFORTIFY Checked         Total   Filename\n" '' "<dir name='$tempdir'>\n" "{ \"dir\": { \"name\":\"$tempdir\" },"
+    if ${extended_checks}; then
+      echo_message "RELRO           STACK CANARY      NX            PIE             Clang CFI            SafeStack            RPATH      RUNPATH    Symbols      \tFORTIFY\tFortified\tFortifiable   Filename\n" '' "<dir name='$tempdir'>\n" "{ \"dir\": { \"name\":\"$tempdir\" },"
+    else
+      echo_message "RELRO           STACK CANARY      NX            PIE             RPATH      RUNPATH    Symbols      \tFORTIFY Checked         Total   Filename\n" '' "<dir name='$tempdir'>\n" "{ \"dir\": { \"name\":\"$tempdir\" },"
+    fi
     fdircount=0
     fdirtotal=0
     for N in $(find $tempdir -type f); do
@@ -1348,7 +1623,11 @@ do
       printf "\033[m\n"
       exit 1
     fi
-    echo_message "RELRO           STACK CANARY      NX            PIE             RPATH      RUNPATH\tSymbols \tFORTIFY\tFortified\tFortifiable\tFILE\n" '' '' '{'
+    if ${extended_checks}; then
+      echo_message "RELRO           STACK CANARY      NX            PIE             Clang CFI            SafeStack            RPATH      RUNPATH\tSymbols \tFORTIFY\tFortified\tFortifiable\tFILE\n" '' '' '{'
+    else
+      echo_message "RELRO           STACK CANARY      NX            PIE             RPATH      RUNPATH\tSymbols \tFORTIFY\tFortified\tFortifiable\tFILE\n" '' '' '{'
+    fi
     filecheck "$2"
     echo -ne "\t"
     if [[ "$(find "$2" \( -perm -004000 -o -perm -002000 \) -type f -print)" ]] ; then

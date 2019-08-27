@@ -6,11 +6,16 @@ It has been originally written by Tobias Klein and the original source is availa
 
 Updates
 -------
-   Last Update: 2018-01-24
+   Last Update: 2019-08-23
 
 For OSX
 -------
 Install the binutils via brew `brew install binutils`
+
+For Windows
+-----------
+Very simple batch script added, needs Visual Studio installed and in the path
+
 
 Examples
 --------
@@ -134,6 +139,26 @@ Examples
 
 	$ checksec.sh --output json --kernel
  	{ "kernel": { "KernelConfig":"/boot/config-3.11-2-amd64","gcc_stack_protector":"yes","strict_user_copy_check":"no","ro_kernel_data":"yes","restrict_dev_mem_access":"yes","restrict_dev_kmem_access":"no" },{ "grsecurity_config":"no" },{ "kernheap_config":"no" } }
+
+**Windows**
+	The checksec.bat script only processes one filename as first parameter
+
+	% checksec.bat test.exe
+	File: test.exe
+	High Entrpy:
+						High Entropy Virtual Addresses
+	Dynamic Base (ASLR):
+						Dynamic base
+	Non Executable Stack:
+						NX compatible
+	Control Flow Guard:
+						Control Flow Guard
+	Code Integrity:
+						Code Integrity Flags
+	SAFESEH (x86 only):
+						_seh_
+	Debug:
+						IsDebuggerPresent
 
 
 Warning
